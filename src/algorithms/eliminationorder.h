@@ -22,6 +22,7 @@
 
 #include <algorithm>
 #include <limits>
+#include <optional>
 #include <queue>
 #include <stdint.h>
 #include <string.h>
@@ -110,6 +111,8 @@ struct Event
     , m_coll2(c2)
     , m_evt_type(EventType::COLLISION_EVENT){};
 
+  Event(const Event&) = default;
+
   // In order to use a priority_queue (a max heap) as min heap: overload
   // operator <
   bool operator<(const Event& other) const
@@ -141,7 +144,7 @@ compute_collision_time(const PointOfInterest& p1, const PointOfInterest& p2)
   return d / (p1.get_radius() + p2.get_radius());
 }
 
-Event
+std::optional<Event>
 predict_collision(const PointOfInterest& p,
                   Time t,
                   SpatialHelper& sh,
@@ -163,10 +166,16 @@ predict_collision(const PointOfInterest& p,
   if (t < t_upd) {
     return Event(t_upd, p.get_osm_id());
   } else {
+    auto p_rad = p.get_radius();
+
     Time min_coll_t = std::numeric_limits<Time>::max();
     OsmId min_coll_p = 0;
     for (auto id : sh.get_in_range(p.get_osm_id(), 2 * distance_pnn)) {
       auto& p2 = poi_map.at(id);
+      if (p2.get_radius() > p_rad) {
+        // p2 is responsible for predicting the collision
+        continue;
+      }
 
       Time coll_t = compute_collision_time(p, p2);
       if (coll_t < min_coll_t) {
@@ -175,7 +184,13 @@ predict_collision(const PointOfInterest& p,
       }
     }
 
-    return Event(min_coll_t, p.get_osm_id(), min_coll_p);
+    if (min_coll_t != std::numeric_limits<Time>::max()) {
+      return Event(min_coll_t, p.get_osm_id(), min_coll_p);
+    } else {
+      // return nullopt if no event to a more or equally prioritized point was
+      // found
+      return {};
+    }
   }
 }
 }
@@ -218,10 +233,10 @@ EliminationOrder::compute_elimination_order(std::string file)
   timer.createTimepoint();
   // initialize
   for (const auto& p : pois) {
-    Event evt = predict_collision(p.second, 0., spatial_helper, pois);
-
-    assert(evt.m_evt_type == EventType::UPDATE_EVENT);
-    Q.push(evt);
+    if (auto evt = predict_collision(p.second, 0., spatial_helper, pois)) {
+      assert(evt->m_evt_type == EventType::UPDATE_EVENT);
+      Q.push(*evt);
+    }
   }
 
   timer.createTimepoint();
@@ -234,8 +249,8 @@ EliminationOrder::compute_elimination_order(std::string file)
     auto p1 = pois.find(current_evt.m_coll1);
     if (p1 != pois.end()) {
       if (current_evt.m_evt_type == EventType::UPDATE_EVENT) {
-        auto evt = predict_collision(p1->second, t, spatial_helper, pois);
-        Q.push(evt);
+        if (auto evt = predict_collision(p1->second, t, spatial_helper, pois))
+          Q.push(*evt);
       } else if (current_evt.m_evt_type == EventType::COLLISION_EVENT) {
         if (current_evt.m_coll1 == current_evt.m_coll2) {
           result.emplace_back(t, p1->second, p1->second);
@@ -251,21 +266,23 @@ EliminationOrder::compute_elimination_order(std::string file)
             spatial_helper.erase(p2->first);
             pois.erase(p2);
 
-            auto evt = predict_collision(p1->second, t, spatial_helper, pois);
-            Q.push(evt);
+            if (auto evt =
+                  predict_collision(p1->second, t, spatial_helper, pois))
+              Q.push(*evt);
           } else {
             //             result.emplace_back(coll_t, std::move(p1->second));
             result.emplace_back(t, p1->second, p2->second);
             spatial_helper.erase(p1->first);
             pois.erase(p1);
 
-            auto evt = predict_collision(p2->second, t, spatial_helper, pois);
-            Q.push(evt);
+            if (auto evt =
+                  predict_collision(p2->second, t, spatial_helper, pois))
+              Q.push(*evt);
           }
         } else {
           // p1 is the only collision partner alive => repredict collision
-          auto evt = predict_collision(p1->second, t, spatial_helper, pois);
-          Q.push(evt);
+          if (auto evt = predict_collision(p1->second, t, spatial_helper, pois))
+            Q.push(*evt);
         }
       }
     } else {
@@ -273,11 +290,12 @@ EliminationOrder::compute_elimination_order(std::string file)
       // otherwise do nothing
       auto p2 = pois.find(current_evt.m_coll2);
       if (p2 != pois.end()) {
-        auto evt = predict_collision(p2->second, t, spatial_helper, pois);
-        Q.push(evt);
-      };
+        if (auto evt = predict_collision(p2->second, t, spatial_helper, pois))
+          Q.push(*evt);
+      }
     }
   }
+
   timer.stop();
 
   auto times = timer.getTimes();
