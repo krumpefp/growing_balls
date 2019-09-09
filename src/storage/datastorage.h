@@ -10,7 +10,7 @@
 #include <vector>
 
 #include <CGAL/spatial_sort.h>
-#include <libdts2/Delaunay_triangulation_s2.h>
+#include <libdts2/Constrained_delaunay_triangulation_s2.h>
 
 #include "geofunctions.h"
 
