@@ -12,7 +12,7 @@ int
 main(int argc, char** argv)
 {
   if (argc < 2) {
-    std::cout << "Please provide a valid .complete.txt input file!"
+    std::cout << "Please provide a valid input file!"
               << std::endl;
     return 1;
   }
@@ -32,10 +32,9 @@ main(int argc, char** argv)
   }
 
   std::string output_path = input_path;
-  if (input_path.find(".complete.txt")) {
+  if (input_path.find(".complete.txt") != std::string::npos) {
     // replace the old ending '.complete.txt' by .ce
     auto pos = output_path.rfind(".complete.txt");
-    assert(pos != std::string::npos);
     output_path.replace(pos, std::string::npos, ".ce");
   } else {
     output_path = output_path + ".ce";
