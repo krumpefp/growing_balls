@@ -41,7 +41,7 @@ public:
 
   using Distance = growing_balls::Distance;
 
-  static const DataStorageOsmId::ElementId UNDEFINED_ID = 0;
+  static const DataStorageOsmId::ElementId UNDEFINED_ID = DataStorageOsmId::ElementIdFactory::UNDEFINED_ID;
 
 public:
   // Default constructor: initialize with an empty poi set

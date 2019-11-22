@@ -87,7 +87,7 @@ public:
 
   /**
    * Ids 0-5 are reserved:
-   * 0      : UNDEFINED_ID
+   * max    : UNDEFINED_ID
    * 1 - 4  : auxiliary points
    *
    * further ids map to the vector like follows:
@@ -96,7 +96,7 @@ public:
    */
   struct ElementIdFactory
   {
-    const static ElementId UNDEFINED_ID = 0;
+    const static ElementId UNDEFINED_ID = std::numeric_limits<ElementId>::max();
 
     static std::size_t get_vpos_from_id(ElementId id) { return id - 5; };
 
