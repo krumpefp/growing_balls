@@ -26,8 +26,9 @@
 
 namespace growing_balls {
 // BEGIN class PointOfInterest
-PointOfInterest::PointOfInterest(std::string input_str)
-  : m_elim_t(0)
+PointOfInterest::PointOfInterest(PoiId pid, std::string input_str)
+  : m_pid(pid)
+  , m_elim_t(0)
   , m_elim_partner()
 {
   std::stringstream ss(input_str);
@@ -49,8 +50,9 @@ PointOfInterest::print() const
   std::stringstream ss_result;
 
   ss_result.precision(22);
-  ss_result << m_lat << " " << m_lon << " " << m_priority << " " << m_osmid
-            << " '" << m_label << "' " << m_font_fac;
+  ss_result << "Poi #" << m_pid << ": " << m_lat << " " << m_lon << " "
+            << m_priority << " " << m_osmid << " '" << m_label << "' "
+            << m_font_fac;
 
   return ss_result.str();
 }

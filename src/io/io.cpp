@@ -73,9 +73,11 @@ IO::import_label(std::string input_file)
   std::string header;
   std::getline(inFile, header);
   std::size_t total = std::stol(header);
+  PoiId current_id = 0;
   for (std::string line; std::getline(inFile, line);) {
     if (line.size() > 0 && line.at(0) != '#') {
-      result.emplace_back(line);
+      result.emplace_back(current_id, line);
+      ++current_id;
     }
   }
 

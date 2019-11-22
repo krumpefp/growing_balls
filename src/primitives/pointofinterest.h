@@ -33,6 +33,7 @@ using Coord_Lon = double;
 using FontFactor = double;
 using Label = std::string;
 using OsmId = int64_t;
+using PoiId = uint64_t;
 using Priority = uint32_t;
 using Radius = double;
 
@@ -41,18 +42,20 @@ using ElimTime = double;
 class PointOfInterest
 {
 public:
-  PointOfInterest(Coord_Lat lat,
+  PointOfInterest(PoiId pid,
+                  Coord_Lat lat,
                   Coord_Lon lon,
                   FontFactor f_fac,
                   Label lbl,
-                  OsmId id,
+                  OsmId oid,
                   Priority prio,
                   Radius rad)
-    : m_lat(lat)
+    : m_pid(pid)
+    , m_lat(lat)
     , m_lon(lon)
     , m_font_fac(f_fac)
     , m_label(lbl)
-    , m_osmid(id)
+    , m_osmid(oid)
     , m_priority(prio)
     , m_radius(rad){};
 
@@ -60,7 +63,7 @@ public:
    * parses a string of the following form and initializes the PointOfInterest
    * <lat> <lon> <priority> <radius> <osm_id> '<label>' <font_factor>
    */
-  PointOfInterest(std::string input_str);
+  PointOfInterest(PoiId pid, std::string input_str);
 
   ElimTime get_elim_time() const { return m_elim_t; };
   FontFactor get_font_factor() const { return m_font_fac; };
@@ -76,6 +79,8 @@ public:
   void set_elimination(ElimTime et, OsmId e_partner);
 
 private:
+  PoiId m_pid;
+
   // position
   Coord_Lat m_lat;
   Coord_Lon m_lon;
