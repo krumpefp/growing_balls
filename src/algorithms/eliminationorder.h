@@ -82,7 +82,7 @@ namespace growing_balls {
 
 // BEGIN Helpers
 namespace {
-using PoiMap = std::unordered_map<PoiId, PointOfInterest>;
+using PoiList = std::vector<PointOfInterest>;
 
 enum class EventType : int32_t
 {
@@ -147,7 +147,7 @@ std::optional<Event>
 predict_collision(const PointOfInterest& p,
                   Time t,
                   SpatialHelper& sh,
-                  const PoiMap& poi_map)
+                  const PoiList& poi_list)
 {
   auto id_nn = sh.get_nearest_neighbor(p.get_pid());
 
@@ -156,7 +156,7 @@ predict_collision(const PointOfInterest& p,
       std::numeric_limits<Time>::max(), p.get_pid(), p.get_pid());
   }
 
-  auto& nn = poi_map.at(id_nn);
+  auto& nn = poi_list.at(id_nn);
 
   auto distance_pnn = distance_in_centimeters(
     p.get_lat(), p.get_lon(), nn.get_lat(), nn.get_lon());
@@ -170,7 +170,7 @@ predict_collision(const PointOfInterest& p,
     Time min_coll_t = std::numeric_limits<Time>::max();
     OsmId min_coll_p = 0;
     for (auto id : sh.get_in_range(p.get_pid(), 2 * distance_pnn)) {
-      auto& p2 = poi_map.at(id);
+      auto& p2 = poi_list.at(id);
       if (p2.get_radius() > p_rad) {
         // p2 is responsible for predicting the collision
         continue;
@@ -202,29 +202,25 @@ EliminationOrder::compute_elimination_order(std::string file)
 {
   debug_timer::Timer timer;
   timer.start();
-  auto labels = IO::import_label(file);
+  PoiList pois = IO::import_label(file);
+  std::vector<bool> alive;
+  alive.resize(pois.size(), true);
 
   timer.createTimepoint();
-  SpatialHelper spatial_helper(labels);
+
+  SpatialHelper spatial_helper(pois);
 
   timer.createTimepoint();
-  PoiMap pois;
-  std::transform(labels.begin(),
-                 labels.end(),
-                 std::inserter(pois, pois.begin()),
-                 [](PointOfInterest& poi) {
-                   return std::make_pair(poi.get_pid(), std::move(poi));
-                 });
 
   // remove dupplicated pois
-  for (auto& d : spatial_helper.get_dupplicates()) {
-    auto dupplicate = pois.find(d);
-    std::cout << "Ignoring dupplicated poi: " << dupplicate->second.print()
+  for (auto& id : spatial_helper.get_dupplicates()) {
+    auto dupplicate = pois.at(id);
+    std::cout << "Ignoring dupplicated poi: " << dupplicate.print()
               << std::endl;
-    pois.erase(dupplicate);
+    dupplicate.set_elimination(0, dupplicate.get_osm_id());
+    alive.at(id) = false;
   }
 
-  timer.createTimepoint();
   std::vector<Elimination> result;
 
   std::priority_queue<Event> Q;
@@ -232,7 +228,7 @@ EliminationOrder::compute_elimination_order(std::string file)
   timer.createTimepoint();
   // initialize
   for (const auto& p : pois) {
-    if (auto evt = predict_collision(p.second, 0., spatial_helper, pois)) {
+    if (auto evt = predict_collision(p, 0., spatial_helper, pois)) {
       assert(evt->m_evt_type == EventType::UPDATE_EVENT);
       Q.push(*evt);
     }
@@ -245,51 +241,49 @@ EliminationOrder::compute_elimination_order(std::string file)
     Q.pop();
     t = current_evt.m_trigger_time;
 
-    auto p1 = pois.find(current_evt.m_coll1);
-    if (p1 != pois.end()) {
+    if (alive.at(current_evt.m_coll1)) {
+      auto p1 = pois.at(current_evt.m_coll1);
       if (current_evt.m_evt_type == EventType::UPDATE_EVENT) {
-        if (auto evt = predict_collision(p1->second, t, spatial_helper, pois))
+        if (auto evt = predict_collision(p1, t, spatial_helper, pois))
           Q.push(*evt);
       } else if (current_evt.m_evt_type == EventType::COLLISION_EVENT) {
         if (current_evt.m_coll1 == current_evt.m_coll2) {
-          result.emplace_back(t, p1->second, p1->second);
+          result.emplace_back(t, p1, p1);
           break;
         }
 
-        auto p2 = pois.find(current_evt.m_coll2);
-        if (p2 != pois.end()) {
+        if (alive.at(current_evt.m_coll2)) {
+          auto p2 = pois.at(current_evt.m_coll2);
           // here p1 and p2 are alive
-          if (prefer(p1->second, p2->second)) {
-            //             result.emplace_back(coll_t, std::move(p2->second));
-            result.emplace_back(t, p2->second, p1->second);
-            spatial_helper.erase(p2->first);
-            pois.erase(p2);
+          if (prefer(p1, p2)) {
+            result.emplace_back(t, p2, p1);
+            spatial_helper.erase(p2.get_pid());
+            alive.at(p2.get_pid()) = false;
 
             if (auto evt =
-                  predict_collision(p1->second, t, spatial_helper, pois))
+                  predict_collision(p1, t, spatial_helper, pois))
               Q.push(*evt);
           } else {
-            //             result.emplace_back(coll_t, std::move(p1->second));
-            result.emplace_back(t, p1->second, p2->second);
-            spatial_helper.erase(p1->first);
-            pois.erase(p1);
+            result.emplace_back(t, p1, p2);
+            spatial_helper.erase(p1.get_pid());
+            alive.at(p1.get_pid()) = false;
 
             if (auto evt =
-                  predict_collision(p2->second, t, spatial_helper, pois))
+                  predict_collision(p2, t, spatial_helper, pois))
               Q.push(*evt);
           }
         } else {
           // p1 is the only collision partner alive => repredict collision
-          if (auto evt = predict_collision(p1->second, t, spatial_helper, pois))
+          if (auto evt = predict_collision(p1, t, spatial_helper, pois))
             Q.push(*evt);
         }
       }
     } else {
       // check if p2 is alive and predict its next collision
       // otherwise do nothing
-      auto p2 = pois.find(current_evt.m_coll2);
-      if (p2 != pois.end()) {
-        if (auto evt = predict_collision(p2->second, t, spatial_helper, pois))
+      if (alive.at(current_evt.m_coll2)) {
+        auto p2 = pois.at(current_evt.m_coll2);
+        if (auto evt = predict_collision(p2, t, spatial_helper, pois))
           Q.push(*evt);
       }
     }
@@ -300,13 +294,13 @@ EliminationOrder::compute_elimination_order(std::string file)
   auto times = timer.getTimes();
 
   std::cout << "Computation of the elimination order finished." << std::endl;
+  std::cout << "Computed " << pois.size() << " many eliminations." << std::endl;
   std::cout << "Required times in ms were as follows:" << std::endl;
   std::cout << times[0] << "\t Label import" << std::endl;
   std::cout << times[1] << "\t Initialization of the spatial helper"
             << std::endl;
-  std::cout << times[2] << "\t Creation of the poi map" << std::endl;
-  std::cout << times[4] << "\t Initialization of the algorithm" << std::endl;
-  std::cout << times[5] << "\t Main algorithm loop" << std::endl;
+  std::cout << times[3] << "\t Initialization of the algorithm" << std::endl;
+  std::cout << times[4] << "\t Main algorithm loop" << std::endl;
 
   return result;
 }
