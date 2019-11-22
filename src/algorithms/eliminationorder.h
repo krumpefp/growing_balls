@@ -228,6 +228,7 @@ EliminationOrder::compute_elimination_order(std::string file)
   timer.createTimepoint();
   // initialize
   for (const auto& p : pois) {
+    if (!alive.at(p.get_pid())) continue;
     if (auto evt = predict_collision(p, 0., spatial_helper, pois)) {
       assert(evt->m_evt_type == EventType::UPDATE_EVENT);
       Q.push(*evt);
