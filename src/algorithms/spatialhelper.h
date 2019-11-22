@@ -157,7 +157,7 @@ SpatialHelper::SpatialHelper(const std::vector<POI>& pois)
 {
   std::vector<LabelElement> lbl_elems;
   for (auto poi : pois) {
-    lbl_elems.emplace_back(poi.get_lat(), poi.get_lon(), poi.get_osm_id());
+    lbl_elems.emplace_back(poi.get_lat(), poi.get_lon(), poi.get_pid());
   }
 
   m_dupplicates = m_storage.insert(lbl_elems.begin(), lbl_elems.end());

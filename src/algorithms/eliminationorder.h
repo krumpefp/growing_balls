@@ -82,8 +82,7 @@ namespace growing_balls {
 
 // BEGIN Helpers
 namespace {
-using ID = OsmId;
-using PoiMap = std::unordered_map<ID, PointOfInterest>;
+using PoiMap = std::unordered_map<PoiId, PointOfInterest>;
 
 enum class EventType : int32_t
 {
@@ -94,18 +93,18 @@ enum class EventType : int32_t
 struct Event
 {
   Time m_trigger_time;
-  ID m_coll1;
-  ID m_coll2;
+  PoiId m_coll1;
+  PoiId m_coll2;
 
   EventType m_evt_type;
 
-  Event(Time t, ID c1)
+  Event(Time t, PoiId c1)
     : m_trigger_time(t)
     , m_coll1(c1)
     , m_coll2(c1)
     , m_evt_type(EventType::UPDATE_EVENT){};
 
-  Event(Time t, ID c1, ID c2)
+  Event(Time t, PoiId c1, PoiId c2)
     : m_trigger_time(t)
     , m_coll1(c1)
     , m_coll2(c2)
@@ -150,11 +149,11 @@ predict_collision(const PointOfInterest& p,
                   SpatialHelper& sh,
                   const PoiMap& poi_map)
 {
-  auto id_nn = sh.get_nearest_neighbor(p.get_osm_id());
+  auto id_nn = sh.get_nearest_neighbor(p.get_pid());
 
   if (id_nn == sh.UNDEFINED_ID) {
     return Event(
-      std::numeric_limits<Time>::max(), p.get_osm_id(), p.get_osm_id());
+      std::numeric_limits<Time>::max(), p.get_pid(), p.get_pid());
   }
 
   auto& nn = poi_map.at(id_nn);
@@ -164,13 +163,13 @@ predict_collision(const PointOfInterest& p,
   Time t_upd = distance_pnn / (2 * p.get_radius());
 
   if (t < t_upd) {
-    return Event(t_upd, p.get_osm_id());
+    return Event(t_upd, p.get_pid());
   } else {
     auto p_rad = p.get_radius();
 
     Time min_coll_t = std::numeric_limits<Time>::max();
     OsmId min_coll_p = 0;
-    for (auto id : sh.get_in_range(p.get_osm_id(), 2 * distance_pnn)) {
+    for (auto id : sh.get_in_range(p.get_pid(), 2 * distance_pnn)) {
       auto& p2 = poi_map.at(id);
       if (p2.get_radius() > p_rad) {
         // p2 is responsible for predicting the collision
@@ -180,12 +179,12 @@ predict_collision(const PointOfInterest& p,
       Time coll_t = compute_collision_time(p, p2);
       if (coll_t < min_coll_t) {
         min_coll_t = coll_t;
-        min_coll_p = p2.get_osm_id();
+        min_coll_p = p2.get_pid();
       }
     }
 
     if (min_coll_t != std::numeric_limits<Time>::max()) {
-      return Event(min_coll_t, p.get_osm_id(), min_coll_p);
+      return Event(min_coll_t, p.get_pid(), min_coll_p);
     } else {
       // return nullopt if no event to a more or equally prioritized point was
       // found
@@ -209,12 +208,12 @@ EliminationOrder::compute_elimination_order(std::string file)
   SpatialHelper spatial_helper(labels);
 
   timer.createTimepoint();
-  std::unordered_map<OsmId, PointOfInterest> pois;
+  PoiMap pois;
   std::transform(labels.begin(),
                  labels.end(),
                  std::inserter(pois, pois.begin()),
                  [](PointOfInterest& poi) {
-                   return std::make_pair(poi.get_osm_id(), std::move(poi));
+                   return std::make_pair(poi.get_pid(), std::move(poi));
                  });
 
   // remove dupplicated pois
