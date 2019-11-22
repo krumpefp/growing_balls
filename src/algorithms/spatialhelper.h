@@ -108,7 +108,7 @@ struct NN_Extractor
                                                         elem.get_coord_2());
     if (d < m_nn_distance) {
       m_nn_distance = d;
-      m_nn_id = elem.get_id();
+      m_nn_id = elem.get_info();
     }
   };
 };
@@ -195,7 +195,7 @@ SpatialHelper::get_nearest_neighbor(OsmId id)
     return UNDEFINED_ID;
   }
 
-  return m_storage.get(nn.m_nn_id).get_info();
+  return nn.m_nn_id;
 }
 
 std::vector<OsmId>
