@@ -39,7 +39,11 @@ bool
 prefer(const growing_balls::PointOfInterest& p1,
        const growing_balls::PointOfInterest& p2)
 {
-  return p1.get_priority() > p2.get_priority();
+  if (p1.get_priority() != p2.get_priority()) {
+    return p1.get_priority() > p2.get_priority();
+  } else {
+    return p1.get_osm_id() > p2.get_osm_id();
+  }
 };
 }
 
