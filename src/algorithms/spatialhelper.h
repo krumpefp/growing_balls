@@ -51,9 +51,9 @@ public:
   ~SpatialHelper();
   SpatialHelper& operator=(SpatialHelper&& other) = delete;
 
-  OsmId get_nearest_neighbor(OsmId id);
+  OsmId get_nearest_neighbor(OsmId id) const;
 
-  std::vector<OsmId> get_in_range(OsmId id, Distance d);
+  std::vector<OsmId> get_in_range(OsmId id, Distance d) const;
 
   void erase(OsmId);
 
@@ -83,7 +83,7 @@ struct ID_Mapper
 {
   std::unordered_map<OsmId, LabelElementId> m_map;
 
-  void operator()(LabelElement& elem)
+  void operator()(const LabelElement& elem)
   {
     m_map.emplace(elem.get_info(), elem.get_id());
   }
@@ -94,13 +94,13 @@ struct NN_Extractor
   Distance m_nn_distance = std::numeric_limits<Distance>::max();
   // TODO: OsmId != UNDEFINED_ID!!!!
   OsmId m_nn_id = ElementIdFactory::UNDEFINED_ID;
-  LabelElement& m_query;
+  const LabelElement& m_query;
 
-  NN_Extractor(OsmId query_id, SpatialHelper::DataStorageOsmId& storage)
+  NN_Extractor(OsmId query_id, const SpatialHelper::DataStorageOsmId& storage)
     : m_query(storage.get(query_id)){};
 
   // CAUTION this code might not be thread save
-  void operator()(LabelElement& elem)
+  void operator()(const LabelElement& elem)
   {
     Distance d = growing_balls::distance_in_centimeters(m_query.get_coord_1(),
                                                         m_query.get_coord_2(),
@@ -117,19 +117,19 @@ struct RangeExplorer
 {
   std::unordered_set<OsmId> m_neighbors;
   Distance m_distance_limit;
-  LabelElement& m_query;
+  const LabelElement& m_query;
   LabelElementId m_current_id;
-  SpatialHelper::DataStorageOsmId& m_storage;
+  const SpatialHelper::DataStorageOsmId& m_storage;
 
   RangeExplorer(OsmId query_id,
                 Distance max_dist,
-                SpatialHelper::DataStorageOsmId& storage)
+                const SpatialHelper::DataStorageOsmId& storage)
     : m_distance_limit(max_dist)
     , m_query(storage.get(query_id))
     , m_current_id(query_id)
     , m_storage(storage){};
 
-  void operator()(LabelElement& elem)
+  void operator()(const LabelElement& elem)
   {
     LabelElementId elem_id = elem.get_id();
     if (m_neighbors.count(elem.get_info()) != 0 || elem_id == m_query.get_id()) {
@@ -173,7 +173,7 @@ SpatialHelper::~SpatialHelper()
 }
 
 OsmId
-SpatialHelper::get_nearest_neighbor(OsmId id)
+SpatialHelper::get_nearest_neighbor(OsmId id) const
 {
   auto i_id = m_id_mapper.at(id);
   NN_Extractor nn(i_id, m_storage);
@@ -188,7 +188,7 @@ SpatialHelper::get_nearest_neighbor(OsmId id)
 }
 
 std::vector<OsmId>
-SpatialHelper::get_in_range(OsmId id, Distance d)
+SpatialHelper::get_in_range(OsmId id, Distance d) const
 {
   auto i_id = m_id_mapper.at(id);
   RangeExplorer r_exp(i_id, d, m_storage);

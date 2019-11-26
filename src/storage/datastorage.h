@@ -132,13 +132,13 @@ public:
 
   std::size_t remove(ElementId id);
 
-  Element& get(ElementId id)
+  const Element& get(ElementId id) const
   {
     return m_elements.at(ElementIdFactory::get_vpos_from_id(id));
   };
 
   template<typename Visitor>
-  void visit_all(Visitor& v);
+  void visit_all(Visitor& v) const;
 
   /**
    * The neighborhood visitor is applied for each neighbor of the specified
@@ -151,7 +151,7 @@ public:
                                    const VertexCirculator& current,
                                    const VertexCirculator& end,
                                    ElementId query,
-                                   Visitor& v);
+                                   Visitor& v) const;
 
   /**
    * The neighborhood visitor is applied for each neighbor of the specified
@@ -160,7 +160,7 @@ public:
    * It is guaranteed that one of these neighbors is the nearest neighbor.
    */
   template<typename Visitor>
-  void visit_neighborhood(ElementId elem_id, Visitor& v);
+  void visit_neighborhood(ElementId elem_id, Visitor& v) const;
 
   friend Helpers;
 
@@ -292,7 +292,7 @@ TMPL_CLS::insert(typename std::vector<Element>::iterator begin,
 
 TMPL_HDR template<typename Visitor>
 void
-TMPL_CLS::visit_all(Visitor& v)
+TMPL_CLS::visit_all(Visitor& v) const
 {
   for (auto& elem : m_elements) {
     v(elem);
@@ -305,7 +305,7 @@ TMPL_CLS::visit_neighborhood_with_aux(const VertexCirculator& begin,
                                       const VertexCirculator& current,
                                       const VertexCirculator& end,
                                       ElementId query,
-                                      Visitor& v)
+                                      Visitor& v) const
 {
   VertexCirculator it = begin;
 
@@ -364,7 +364,7 @@ TMPL_CLS::visit_neighborhood_with_aux(const VertexCirculator& begin,
 
 TMPL_HDR template<typename Visitor>
 void
-TMPL_CLS::visit_neighborhood(TMPL_CLS::ElementId elem_id, Visitor& v)
+TMPL_CLS::visit_neighborhood(TMPL_CLS::ElementId elem_id, Visitor& v) const
 {
   auto& elem = m_elements.at(ElementIdFactory::get_vpos_from_id(elem_id));
 
