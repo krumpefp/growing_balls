@@ -34,59 +34,126 @@
 #include "spatialhelper.h"
 #include "timer.h"
 
+namespace growing_balls{
 namespace {
-bool
-prefer(const growing_balls::PointOfInterest& p1,
-       const growing_balls::PointOfInterest& p2)
-{
-  if (p1.get_priority() != p2.get_priority()) {
-    return p1.get_priority() > p2.get_priority();
-  } else {
-    return p1.get_osm_id() > p2.get_osm_id();
-  }
-};
-}
-
-namespace growing_balls {
-using Time = ElimTime;
-
-class EliminationOrder
-{
-public:
-  struct Elimination
+  class EliminationOrder
   {
-    PointOfInterest m_eliminated;
-    PointOfInterest m_eliminated_by;
-    Time m_elimination_time;
+  public:
+    struct Elimination
+    {
+      PointOfInterest m_eliminated;
+      PointOfInterest m_eliminated_by;
+      ElimTime m_elimination_time;
 
-    Elimination(Time elim_t, PointOfInterest elim, PointOfInterest elim_by)
-      : m_eliminated(std::move(elim))
-      , m_eliminated_by(std::move(elim_by))
-      , m_elimination_time(elim_t){};
+      Elimination(ElimTime elim_t, PointOfInterest elim, PointOfInterest elim_by)
+        : m_eliminated(std::move(elim))
+        , m_eliminated_by(std::move(elim_by))
+        , m_elimination_time(elim_t){};
+    };
+
+  public:
+    EliminationOrder() = default;
+
+    EliminationOrder(EliminationOrder&& other) = default;
+    EliminationOrder& operator=(EliminationOrder&& other) = default;
+
+    std::vector<Elimination> compute_elimination_order(std::string file);
+
+  private:
+    std::vector<double> m_debug_times;
   };
-
-public:
-  EliminationOrder() = default;
-
-  EliminationOrder(EliminationOrder&& other) = default;
-  EliminationOrder& operator=(EliminationOrder&& other) = default;
-
-  std::vector<Elimination> compute_elimination_order(std::string file);
-
-private:
-  std::vector<double> m_debug_times;
-};
+}
 }
 
 #endif // ELIMINATIONORDER_H
 
 // BEGIN DEFINITION
 
-namespace growing_balls {
-
 // BEGIN Helpers
+namespace growing_balls{
 namespace {
-using PoiList = std::vector<PointOfInterest>;
+  using namespace growing_balls;
+  using PoiList = std::vector<PointOfInterest>;
+
+  ElimTime
+  compute_collision_time(const PointOfInterest& p1, const PointOfInterest& p2)
+  {
+    auto d = distance_in_centimeters(
+      p1.get_lat(), p1.get_lon(), p2.get_lat(), p2.get_lon());
+
+    return d / (p1.get_radius() + p2.get_radius());
+  }
+
+// HEURISTICS
+  bool heur_id(const PointOfInterest& p1,
+              const PointOfInterest& p2) {
+    return p1.get_osm_id() > p2.get_osm_id();
+  }
+
+  bool heur_rad(const PointOfInterest& p1,
+                const PointOfInterest& p2) {
+    if (p1.get_radius() == p2.get_radius()) {
+      std::cerr << "Falling back to id to break ties in radius heuristic"
+                << std::endl;
+      return heur_id(p1, p2);
+    }
+    return p1.get_radius() < p2.get_radius();
+  }
+
+  double get_next_coll_t(const PointOfInterest& p,
+                         const std::vector<PointOfInterest>& poi_list,
+                         const SpatialHelper& sh,
+                         const double radius) {
+    auto neighborhood = sh.get_in_range(p.get_pid(), radius);
+    double min_coll_t = std::numeric_limits<double>::max();
+    for (auto q_id : neighborhood) {
+      auto q = poi_list.at(q_id);
+      if (q.get_priority() > p.get_priority()) {
+        double coll_t = compute_collision_time(p, q);
+        min_coll_t = std::min(min_coll_t, coll_t);
+      }
+    }
+    return min_coll_t;
+  }
+
+  const double EXP_RAD_FAC = 16;
+
+  bool heur_next_coll(const PointOfInterest& p1,
+                    const PointOfInterest& p2,
+                    const std::vector<PointOfInterest>& poi_list,
+                    const SpatialHelper& sh,
+                    const double curr_t) {
+    double radius = std::max(p1.get_radius(), p2.get_radius()) * EXP_RAD_FAC * curr_t;
+    double nextCollTp1 = get_next_coll_t(p1, poi_list, sh, radius);
+    double nextCollTp2 = get_next_coll_t(p2, poi_list, sh, radius);
+
+    if (nextCollTp1 == nextCollTp2) {
+      std::cerr << "Falling back to id to break ties in nextCol heuristic"
+                << std::endl;
+      return heur_id(p1, p2);
+    }
+    return nextCollTp1 > nextCollTp2;
+  }
+
+  bool
+  prefer(const PointOfInterest& p1,
+        const PointOfInterest& p2,
+        const std::vector<PointOfInterest>& poi_list,
+        const SpatialHelper& sh,
+        const double curr_t) {
+    if (p1.get_priority() != p2.get_priority()) {
+      return p1.get_priority() > p2.get_priority();
+    } else {
+      //return heur_id(p1, p2);
+      //return heur_rad(p1, p2);
+      //return heur_next_coll(p1, p2, poi_list, sh, curr_t);
+
+      // INVERSE HEURISTICS
+      //return !heur_id(p1, p2);
+      //return !heur_rad(p1, p2);
+      return !heur_next_coll(p1, p2, poi_list, sh, curr_t);
+    }
+  };
 
 enum class EventType : int32_t
 {
@@ -96,19 +163,19 @@ enum class EventType : int32_t
 
 struct Event
 {
-  Time m_trigger_time;
+  ElimTime m_trigger_time;
   PoiId m_coll1;
   PoiId m_coll2;
 
   EventType m_evt_type;
 
-  Event(Time t, PoiId c1)
+  Event(ElimTime t, PoiId c1)
     : m_trigger_time(t)
     , m_coll1(c1)
     , m_coll2(c1)
     , m_evt_type(EventType::UPDATE_EVENT){};
 
-  Event(Time t, PoiId c1, PoiId c2)
+  Event(ElimTime t, PoiId c1, PoiId c2)
     : m_trigger_time(t)
     , m_coll1(c1)
     , m_coll2(c2)
@@ -138,18 +205,9 @@ struct Event
   }
 };
 
-Time
-compute_collision_time(const PointOfInterest& p1, const PointOfInterest& p2)
-{
-  auto d = distance_in_centimeters(
-    p1.get_lat(), p1.get_lon(), p2.get_lat(), p2.get_lon());
-
-  return d / (p1.get_radius() + p2.get_radius());
-}
-
 std::optional<Event>
 predict_collision(const PointOfInterest& p,
-                  Time t,
+                  ElimTime t,
                   SpatialHelper& sh,
                   const PoiList& poi_list)
 {
@@ -157,21 +215,21 @@ predict_collision(const PointOfInterest& p,
 
   if (id_nn == sh.UNDEFINED_ID) {
     return Event(
-      std::numeric_limits<Time>::max(), p.get_pid(), p.get_pid());
+      std::numeric_limits<ElimTime>::max(), p.get_pid(), p.get_pid());
   }
 
   auto& nn = poi_list.at(id_nn);
 
   auto distance_pnn = distance_in_centimeters(
     p.get_lat(), p.get_lon(), nn.get_lat(), nn.get_lon());
-  Time t_upd = distance_pnn / (2 * p.get_radius());
+  ElimTime t_upd = distance_pnn / (2 * p.get_radius());
 
   if (t < t_upd) {
     return Event(t_upd, p.get_pid());
   } else {
     auto p_rad = p.get_radius();
 
-    Time min_coll_t = std::numeric_limits<Time>::max();
+    ElimTime min_coll_t = std::numeric_limits<ElimTime>::max();
     OsmId min_coll_p = 0;
     for (auto id : sh.get_in_range(p.get_pid(), 2 * distance_pnn)) {
       auto& p2 = poi_list.at(id);
@@ -180,14 +238,14 @@ predict_collision(const PointOfInterest& p,
         continue;
       }
 
-      Time coll_t = compute_collision_time(p, p2);
+      ElimTime coll_t = compute_collision_time(p, p2);
       if (coll_t < min_coll_t) {
         min_coll_t = coll_t;
         min_coll_p = p2.get_pid();
       }
     }
 
-    if (min_coll_t != std::numeric_limits<Time>::max()) {
+    if (min_coll_t != std::numeric_limits<ElimTime>::max()) {
       return Event(min_coll_t, p.get_pid(), min_coll_p);
     } else {
       // return nullopt if no event to a more or equally prioritized point was
@@ -197,9 +255,12 @@ predict_collision(const PointOfInterest& p,
   }
 }
 }
+}
 // END Helpers
 
 // BEGIN class EliminationOrder
+namespace growing_balls {
+namespace {
 
 std::vector<EliminationOrder::Elimination>
 EliminationOrder::compute_elimination_order(std::string file)
@@ -240,7 +301,7 @@ EliminationOrder::compute_elimination_order(std::string file)
   }
 
   timer.createTimepoint();
-  Time t = 0;
+  ElimTime t = 0;
   while (!Q.empty()) {
     auto current_evt = Q.top();
     Q.pop();
@@ -260,7 +321,7 @@ EliminationOrder::compute_elimination_order(std::string file)
         if (alive.at(current_evt.m_coll2)) {
           auto p2 = pois.at(current_evt.m_coll2);
           // here p1 and p2 are alive
-          if (prefer(p1, p2)) {
+          if (prefer(p1, p2, pois, spatial_helper, t)) {
             result.emplace_back(t, p2, p1);
             spatial_helper.erase(p2.get_pid());
             alive.at(p2.get_pid()) = false;
@@ -311,5 +372,6 @@ EliminationOrder::compute_elimination_order(std::string file)
 }
 
 // END class EliminationOrder
+}
 }
 // END DEFINITION
