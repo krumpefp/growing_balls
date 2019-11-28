@@ -145,13 +145,13 @@ namespace {
       return p1.get_priority() > p2.get_priority();
     } else {
       //return heur_id(p1, p2);
-      //return heur_rad(p1, p2);
+      return heur_rad(p1, p2);
       //return heur_next_coll(p1, p2, poi_list, sh, curr_t);
 
       // INVERSE HEURISTICS
       //return !heur_id(p1, p2);
       //return !heur_rad(p1, p2);
-      return !heur_next_coll(p1, p2, poi_list, sh, curr_t);
+      //return !heur_next_coll(p1, p2, poi_list, sh, curr_t);
     }
   };
 
