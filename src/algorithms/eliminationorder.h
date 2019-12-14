@@ -312,10 +312,13 @@ EliminationOrder::compute_elimination_order(std::string file)
   timer.createTimepoint();
 
   // remove dupplicated pois
-  for (auto& id : spatial_helper.get_dupplicates()) {
+  auto dupplicates = spatial_helper.get_dupplicates();
+  std::cout << "Removing "
+	    << dupplicates.size()
+	    << " dupplicated pois from the data set..."
+	    << std::endl;
+  for (auto& id : dupplicates) {
     auto dupplicate = pois.at(id);
-    std::cout << "Ignoring dupplicated poi: " << dupplicate.print()
-              << std::endl;
     dupplicate.set_elimination(0, dupplicate.get_osm_id());
     alive.at(id) = false;
   }
@@ -401,6 +404,7 @@ EliminationOrder::compute_elimination_order(std::string file)
             << std::endl;
   std::cout << times[3] << "\t Initialization of the algorithm" << std::endl;
   std::cout << times[4] << "\t Main algorithm loop" << std::endl;
+  std::cout << times[3] + times[4] << "\t Algorithm in total" << std::endl;
 
   return result;
 }
