@@ -39,6 +39,23 @@ namespace {
   class EliminationOrder
   {
   public:
+    enum class Heuristic : uint32_t
+    {
+      RAD = 0,
+      RAD_INV = 10,
+      ID = 1,
+      ID_INV = 11,
+      NXE2 = 2,
+      NXE2_INV = 12,
+      NXE4 = 3,
+      NXE4_INV = 13,
+      NXE8 = 4,
+      NXE8_INV = 14,
+      NXE16 = 5,
+      NXE16_INV = 15
+
+    };
+
     struct Elimination
     {
       PointOfInterest m_eliminated;
@@ -52,7 +69,7 @@ namespace {
     };
 
   public:
-    EliminationOrder() = default;
+    EliminationOrder(Heuristic h = Heuristic::RAD) : m_heur(h), m_debug_times() {};
 
     EliminationOrder(EliminationOrder&& other) = default;
     EliminationOrder& operator=(EliminationOrder&& other) = default;
@@ -60,6 +77,7 @@ namespace {
     std::vector<Elimination> compute_elimination_order(std::string file);
 
   private:
+    Heuristic m_heur;
     std::vector<double> m_debug_times;
   };
 }
@@ -74,6 +92,7 @@ namespace growing_balls{
 namespace {
   using namespace growing_balls;
   using PoiList = std::vector<PointOfInterest>;
+  using Heuristic = EliminationOrder::Heuristic;
 
   ElimTime
   compute_collision_time(const PointOfInterest& p1, const PointOfInterest& p2)
@@ -116,16 +135,13 @@ namespace {
     return min_coll_t;
   }
 
-  const double EXP_RAD_FAC = 16;
-
   bool heur_next_coll(const PointOfInterest& p1,
                     const PointOfInterest& p2,
                     const std::vector<PointOfInterest>& poi_list,
                     const SpatialHelper& sh,
-                    const double curr_t) {
-    double radius = std::max(p1.get_radius(), p2.get_radius()) * EXP_RAD_FAC * curr_t;
-    double nextCollTp1 = get_next_coll_t(p1, poi_list, sh, radius);
-    double nextCollTp2 = get_next_coll_t(p2, poi_list, sh, radius);
+                    const double t) {
+    double nextCollTp1 = get_next_coll_t(p1, poi_list, sh, p1.get_radius() * t);
+    double nextCollTp2 = get_next_coll_t(p2, poi_list, sh, p2.get_radius() * t);
 
     if (nextCollTp1 == nextCollTp2) {
       std::cerr << "Falling back to id to break ties in nextCol heuristic"
@@ -140,18 +156,36 @@ namespace {
         const PointOfInterest& p2,
         const std::vector<PointOfInterest>& poi_list,
         const SpatialHelper& sh,
-        const double curr_t) {
+        const double curr_t,
+        const Heuristic heur) {
     if (p1.get_priority() != p2.get_priority()) {
       return p1.get_priority() > p2.get_priority();
-    } else {
-      //return heur_id(p1, p2);
-      return heur_rad(p1, p2);
-      //return heur_next_coll(p1, p2, poi_list, sh, curr_t);
-
-      // INVERSE HEURISTICS
-      //return !heur_id(p1, p2);
-      //return !heur_rad(p1, p2);
-      //return !heur_next_coll(p1, p2, poi_list, sh, curr_t);
+    } 
+    switch(heur) {
+      case Heuristic::RAD:
+        return heur_rad(p1, p2);
+      case Heuristic::RAD_INV:
+        return !heur_rad(p1, p2);
+      case Heuristic::ID:
+        return heur_id(p1, p2);
+      case Heuristic::ID_INV:
+        return !heur_id(p1, p2);
+      case Heuristic::NXE2:
+        return heur_next_coll(p1, p2, poi_list, sh, 2*curr_t);
+      case Heuristic::NXE2_INV:
+        return !heur_next_coll(p1, p2, poi_list, sh, 2*curr_t);
+      case Heuristic::NXE4:
+        return heur_next_coll(p1, p2, poi_list, sh, 4*curr_t);
+      case Heuristic::NXE4_INV:
+        return !heur_next_coll(p1, p2, poi_list, sh, 4*curr_t);
+      case Heuristic::NXE8:
+        return heur_next_coll(p1, p2, poi_list, sh, 8*curr_t);
+      case Heuristic::NXE8_INV:
+        return !heur_next_coll(p1, p2, poi_list, sh, 8*curr_t);
+      case Heuristic::NXE16:
+        return heur_next_coll(p1, p2, poi_list, sh, 16*curr_t);
+      case Heuristic::NXE16_INV:
+        return !heur_next_coll(p1, p2, poi_list, sh, 16*curr_t);
     }
   };
 
@@ -321,7 +355,7 @@ EliminationOrder::compute_elimination_order(std::string file)
         if (alive.at(current_evt.m_coll2)) {
           auto p2 = pois.at(current_evt.m_coll2);
           // here p1 and p2 are alive
-          if (prefer(p1, p2, pois, spatial_helper, t)) {
+          if (prefer(p1, p2, pois, spatial_helper, t, m_heur)) {
             result.emplace_back(t, p2, p1);
             spatial_helper.erase(p2.get_pid());
             alive.at(p2.get_pid()) = false;
